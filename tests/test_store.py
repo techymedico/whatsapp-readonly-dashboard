@@ -34,6 +34,8 @@ class StorageTests(unittest.TestCase):
 if __name__=='__main__':unittest.main()
 
 class MediaTests(unittest.TestCase):
+ def setUp(self): self.tmp=tempfile.TemporaryDirectory(); self.path=self.tmp.name+'/test.db'; self.s=Store(self.path)
+ def tearDown(self): self.s.db.close();self.tmp.cleanup()
  def test_media_validation(self):
   import base64
   with tempfile.TemporaryDirectory() as d:
@@ -42,3 +44,14 @@ class MediaTests(unittest.TestCase):
    self.assertEqual(s.media('r1')['mime'],'application/pdf')
    with self.assertRaises(ValueError):s.apply([{'id':'bad','message_id':'m','type':'media','reference':'x','mime':'text/html','base64':blob}],2)
    s.db.close()
+ def test_binary_download_retry_integrity_and_restart(self):
+  import hashlib
+  content=b'%PDF-test'
+  e=dict(id='media:ref',type='media_ref',message_id='m',reference='ref',mime='application/pdf',size=len(content),sha256=hashlib.sha256(content).hexdigest())
+  self.s.apply([e],1)
+  with self.assertRaises(ValueError):self.s.complete_media(e,b'bad')
+  self.assertEqual(len(self.s.pending_media()),1)
+  self.s.db.close();self.s=Store(self.path)
+  self.s.complete_media(e,content)
+  self.assertEqual(self.s.pending_media(),[])
+  self.assertEqual(self.s.media('ref')['bytes'],content)

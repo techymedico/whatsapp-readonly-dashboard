@@ -10,7 +10,7 @@ function createOutbox(db, secret) {
       !event ||
       !event.id ||
       !event.message_id ||
-      !['message', 'status'].includes(event.type)
+      !['message', 'status', 'media_ref'].includes(event.type)
     )
       throw new Error('Invalid event');
     const id = crypto.createHash('sha256').update(event.id).digest('hex');

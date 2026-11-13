@@ -1,5 +1,11 @@
 // Called ONLY after your existing webhook has verified the Meta signature.
 const crypto = require('node:crypto');
+const isoDate = value => {
+  if (value && typeof value.toDate === 'function') value=value.toDate();
+  const date=new Date(value || 0);
+  if (!Number.isFinite(date.getTime())) throw new Error('Invalid source timestamp');
+  return date.toISOString();
+};
 const id = (...parts) =>
   crypto.createHash('sha256').update(parts.join('\n')).digest('hex');
 async function captureWebhook(
@@ -85,7 +91,7 @@ async function captureOutgoing(
     phone: raw,
     direction: 'out',
     timestamp:
-      record.created_at || record.createdAt || new Date().toISOString(),
+      isoDate(record.created_at || record.createdAt),
     name: contact.name || '',
     students: contact.students || [],
     text:
@@ -96,9 +102,9 @@ async function captureOutgoing(
     kind: record.type || 'text',
     status: record.status || 'pending',
   };
-  if (record.receipt_id)
+  if (record.receipt_id || (record.type === 'whatsapp_receipt' && record.payment_id))
     e.media = {
-      reference: 'receipt:' + record.receipt_id,
+      reference: 'receipt:' + (record.receipt_id || record.payment_id),
       filename: 'Fee receipt.pdf',
     };
   await outbox.append(e);

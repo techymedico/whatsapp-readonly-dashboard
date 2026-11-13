@@ -7,6 +7,7 @@ class Store:
   self.db.row_factory=sqlite3.Row
   self.db.executescript('''PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;
 CREATE TABLE IF NOT EXISTS media(id TEXT PRIMARY KEY, mime TEXT, filename TEXT, bytes BLOB);
+CREATE TABLE IF NOT EXISTS media_jobs(reference TEXT PRIMARY KEY, event TEXT);
 CREATE TABLE IF NOT EXISTS events(id TEXT PRIMARY KEY);
 CREATE TABLE IF NOT EXISTS messages(id TEXT PRIMARY KEY, phone TEXT, direction TEXT, text TEXT, kind TEXT, timestamp TEXT, status TEXT, name TEXT, students TEXT, media TEXT, seen INTEGER DEFAULT 0);
 CREATE INDEX IF NOT EXISTS messages_phone_time ON messages(phone,timestamp,id);
@@ -20,7 +21,10 @@ INSERT OR IGNORE INTO checkpoints VALUES(1,0);''')
     if self.db.execute('SELECT 1 FROM events WHERE id=?',(e['id'],)).fetchone(): continue
     mid=e.get('message_id'); typ=e.get('type')
     if not isinstance(mid,str) or not mid or len(mid)>256: raise ValueError('Invalid message id')
-    if typ=='media':
+    if typ=='media_ref':
+     if not re.fullmatch(r'[A-Za-z0-9_.:-]{1,256}',e.get('reference','')) or not re.fullmatch(r'[a-f0-9]{64}',e.get('sha256','')) or not isinstance(e.get('size'),int) or not 0<e['size']<=10_000_000 or e.get('mime') not in ('image/png','image/jpeg','application/pdf'): raise ValueError('Invalid media descriptor')
+     self.db.execute('INSERT OR IGNORE INTO media_jobs VALUES(?,?)',(e['reference'],json.dumps(e)))
+    elif typ=='media':
      content=base64.b64decode(e.get('base64',''),validate=True)
      mime=e.get('mime'); signatures={'image/png':b'\x89PNG\r\n\x1a\n','image/jpeg':b'\xff\xd8\xff','application/pdf':b'%PDF-'}
      if mime not in signatures or not content.startswith(signatures[mime]) or len(content)>10_000_000: raise ValueError('Invalid media')
@@ -51,6 +55,13 @@ INSERT OR IGNORE INTO checkpoints VALUES(1,0);''')
    current=self.cursor()
    if not isinstance(cursor,int) or cursor<current: raise ValueError('Invalid checkpoint')
    self.db.execute('UPDATE checkpoints SET cursor=? WHERE id=1',(cursor,))
+ def pending_media(self):
+  return [json.loads(r[0]) for r in self.db.execute('SELECT event FROM media_jobs LIMIT 20')]
+ def complete_media(self,e,content):
+  if len(content)!=e['size'] or hashlib.sha256(content).hexdigest()!=e['sha256']: raise ValueError('Media integrity mismatch')
+  event=dict(e,id='download:'+e['reference'],type='media',base64=base64.b64encode(content).decode())
+  self.apply([event],self.cursor())
+  with self.db: self.db.execute('DELETE FROM media_jobs WHERE reference=?',(e['reference'],))
  def media(self,ref): return self.db.execute('SELECT * FROM media WHERE id=?',(ref,)).fetchone()
  def cursor(self): return self.db.execute('SELECT cursor FROM checkpoints WHERE id=1').fetchone()[0]
  def conversations(self,q=''):

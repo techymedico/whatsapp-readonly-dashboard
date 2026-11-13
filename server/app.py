@@ -30,6 +30,22 @@ def main():
     state.update(last_sync=time.time(),error=None); delay=5 if batch.get('has_more') else 30
    except Exception: state['error']='Synchronization unavailable; history retained and retry scheduled'; delay=min(delay*2,300)
    time.sleep(delay)
+ def media_worker():
+  from urllib.parse import quote
+  url=os.environ.get('SYNC_MEDIA_URL','')
+  if not url or not url.startswith('https://') or len(sync)<32: return
+  while True:
+   with lock: pending=store.pending_media()
+   for e in pending:
+    try:
+     stamp=str(int(time.time())); ref=e['reference']
+     signature=hmac.new(sync.encode(),(stamp+'\nmedia\n'+ref).encode(),hashlib.sha256).hexdigest()
+     request=urllib.request.Request(url+'?reference='+quote(ref,safe=''),headers={'X-Sync-Time':stamp,'X-Sync-Signature':signature})
+     with urllib.request.urlopen(request,timeout=30) as response: content=response.read(10_000_001)
+     with lock: store.complete_media(e,content)
+    except Exception: pass # Durable pending rows survive failures/restarts; retry next cycle.
+   time.sleep(60)
+ threading.Thread(target=media_worker,daemon=True).start()
  threading.Thread(target=worker,daemon=True).start()
  class Handler(BaseHTTPRequestHandler):
   def setup(self):

@@ -99,7 +99,7 @@ python3 -m unittest discover -s tests -v
 
 ## Honest limitations
 
-Historical messages only exist if your original application retained them. This project cannot recover arbitrary old WhatsApp chats. Attachments currently appear as references. The provided outbox needs explicit integration into your application's webhook and outgoing log capture. No claim of production readiness or zero Firebase usage charges is made.
+Historical messages only exist if your original application retained them. This project cannot recover arbitrary old WhatsApp chats. Attachments display as references until private media archival is enabled. Signed binary transfer supports PNG, JPEG and PDF; unsupported types remain references. The provided outbox needs explicit integration into your application's webhook and outgoing log capture. No claim of production readiness or zero Firebase usage charges is made.
 
 ## Credits and licence
 
