@@ -1,0 +1,10 @@
+.env
+.env.*
+!.env.example
+data/
+*.sqlite*
+__pycache__/
+node_modules/
+web/dist/
+private/
+*.log

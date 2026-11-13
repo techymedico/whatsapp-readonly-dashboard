@@ -1,0 +1,14 @@
+services:
+  inbox:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    ports: ["127.0.0.1:3100:3100"]
+    volumes: ["history:/data"]
+    read_only: true
+    tmpfs: ["/tmp"]
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 512m
+volumes:
+  history:
