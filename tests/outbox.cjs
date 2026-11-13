@@ -1,0 +1,9 @@
+const test=require('node:test'),assert=require('node:assert/strict'),crypto=require('node:crypto');
+const {createOutbox}=require('../integrations/firebase-outbox.cjs');
+const secret='synthetic-test-secret-with-32-characters';
+function fake(){const docs=new Map();const ref=(c,k)=>({key:c+'/'+k});const read=r=>({exists:docs.has(r.key),data:()=>docs.get(r.key)});return {docs,collection:c=>({doc:k=>ref(c,k),where:()=>({orderBy:()=>({limit:()=>({get:async()=>({docs:[]})})})})}),runTransaction:async f=>f({get:async r=>read(r),set:(r,v)=>docs.set(r.key,v)})}}
+function response(){return {code:200,set(){},status(c){this.code=c;return this},json(b){this.body=b;return this}}}
+test('outbox duplicate produces only one sequence',async()=>{const db=fake(),o=createOutbox(db,secret),e={id:'x',message_id:'m',type:'message'};await o.append(e);await o.append(e);assert.equal(db.docs.get('readonly_bridge_control/sequence').sequence,1)});
+test('feed rejects unsigned requests',async()=>{const r=response();await createOutbox(fake(),secret).handler({method:'GET',query:{after:'0'},get:()=>''},r);assert.equal(r.code,401)});
+test('feed accepts signed cursor; refuses modified cursor',async()=>{const now=String(Math.floor(Date.now()/1000));const signature=crypto.createHmac('sha256',secret).update(now+'\n0').digest('hex');const req={method:'GET',query:{after:'0'},get:k=>k==='x-sync-time'?now:signature};let r=response();const o=createOutbox(fake(),secret);await o.handler(req,r);assert.equal(r.code,200);assert.equal(r.body.cursor,0);req.query.after='1';r=response();await o.handler(req,r);assert.equal(r.code,401)});
+test('feed rejects stale signed request',async()=>{const now=String(Math.floor(Date.now()/1000)-300),sig=crypto.createHmac('sha256',secret).update(now+'\n0').digest('hex'),r=response();await createOutbox(fake(),secret).handler({method:'GET',query:{after:'0'},get:k=>k==='x-sync-time'?now:sig},r);assert.equal(r.code,401)});
